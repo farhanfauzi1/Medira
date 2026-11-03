@@ -108,33 +108,53 @@ function departmentNames() {
 }
 
 function departmentSettings() {
-  const names = departmentNames();
-  const list = names.length
-    ? `<ul>${names.map(name => `<li>${esc(name)}</li>`).join('')}</ul>`
-    : '<p>Belum ada departemen. Tambahkan unit pertama untuk membuka pilihan pada formulir pengajuan.</p>';
-  return `<section class="card formcard section-gap"><div class="section-heading"><h2>Departemen/unit peminjam</h2>
+  const rows = [...state.departments].sort((a, b) => a.name.localeCompare(b.name, 'id'));
+  const list = rows.length ? `<div class="table-wrap"><table>
+    <thead><tr><th>Nama departemen/unit</th><th>Aksi</th></tr></thead>
+    <tbody>${rows.map(row => `<tr><td>${esc(row.name)}</td><td><div class="actions">
+      ${actionButton('Ubah', `departmentForm('${row.id}')`, true)}
+      ${actionButton('Hapus', `departmentForm('${row.id}', true)`, true)}
+    </div></td></tr>`).join('')}</tbody></table></div>`
+    : '<p>Belum ada departemen. Tambahkan unit pertama untuk formulir pengajuan.</p>';
+  return `<section class="card formcard section-gap"><div class="section-heading">
+    <h2>Departemen/unit peminjam</h2>
     ${actionButton('Tambah departemen/unit', 'departmentForm()', true)}</div>${list}</section>`;
 }
 
-function departmentForm() {
+function departmentForm(id = '', remove = false) {
   if (!admin()) return;
-  modal('Tambah departemen/unit', `<form onsubmit="saveDepartment(event)">
-    ${input('name', 'Nama departemen/unit', '', 'text', true, 'maxlength="120" placeholder="Contoh: IGD"')}
-    ${formEnd('Simpan departemen')}</form>`);
+  const row = byId(state.departments, id);
+  if (id && !row) return toast('Departemen tidak ditemukan. Muat ulang daftar.');
+  const title = remove ? 'Hapus departemen/unit' : id ? 'Ubah departemen/unit' : 'Tambah departemen/unit';
+  const content = remove
+    ? `<p>Hapus <strong>${esc(row.name)}</strong> dari pilihan pengajuan baru? Riwayat peminjaman tetap menyimpan nama departemen saat pengajuan.</p>`
+    : input('name', 'Nama departemen/unit', row?.name || '', 'text', true, 'maxlength="120" placeholder="Contoh: IGD"');
+  modal(title, `<form data-id="${esc(id)}" data-original="${esc(row?.name || '')}" onsubmit="saveDepartment(event, ${remove})">
+    ${content}${formEnd(remove ? 'Ya, hapus departemen' : 'Simpan departemen')}</form>`);
 }
 
-async function saveDepartment(event) {
+async function saveDepartment(event, remove = false) {
   event.preventDefault();
+  if (!admin()) return;
   const form = event.target;
   await formTask(form, async () => {
-    const name = new FormData(form).get('name').trim();
-    if (!name) throw new Error('Isi nama departemen/unit.');
-    const { error } = await db.from('departments').insert({ name });
-    if (error?.code === '23505') throw new Error('Departemen/unit tersebut sudah ada.');
+    const { id, original } = form.dataset;
+    const table = db.from('departments');
+    let query;
+    if (remove) {
+      query = table.delete().eq('id', id).eq('name', original);
+    } else {
+      const name = new FormData(form).get('name').trim();
+      if (!name) throw new Error('Isi nama departemen/unit.');
+      query = id ? table.update({ name }).eq('id', id).eq('name', original) : table.insert({ name });
+    }
+    const { data, error } = await query.select('id');
+    if (error?.code === '23505') throw new Error('Nama departemen/unit tersebut sudah ada.');
     if (error) throw error;
+    if (!data?.length) throw new Error('Perubahan gagal. Muat ulang daftar dan periksa kembali departemen yang dipilih.');
     closeModal(true);
     await route();
-    toast('Departemen/unit tersimpan.');
+    toast(remove ? 'Departemen/unit dihapus.' : 'Departemen/unit tersimpan.');
   });
 }
 
