@@ -8,6 +8,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Supabase
+        env:
+          SB_URL: ${{ secrets.SUPABASE_URL }}
+          SB_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          curl -fsS "${{ secrets.SUPABASE_URL }}/rest/v1/keep_alive?select=id&limit=1" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}"
+          URL=$(printf '%s' "$SB_URL" | tr -d '[:space:]')
+          KEY=$(printf '%s' "$SB_KEY" | tr -d '[:space:]')
+          curl -fsS "$URL/rest/v1/keep_alive?select=id&limit=1" -H "apikey: $KEY"
